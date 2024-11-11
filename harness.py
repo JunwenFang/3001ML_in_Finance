@@ -21,9 +21,7 @@ df = pd.read_csv(input_csv)
 
 model = load_model()
 
-# columns = list(df.columns)
-
-output_csv = predictor_harness(df, model, preprocessor, output_csv )
+final_output = predictor_harness(df, model, preprocessor, output_csv )
                                
 print('done')
 

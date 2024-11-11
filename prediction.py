@@ -73,15 +73,15 @@ def preprocessor(data):
     return final_df
 
 
-def estimator(df, formula):
-    #f: "target ~ roa + td_ta + current_ratio + Debt_coverage + asst_tot"
-    model = sm.logit(formula, data=df).fit()
-    return model
+# def estimator(df, formula):
+#     #f: "target ~ roa + td_ta + current_ratio + Debt_coverage + asst_tot"
+#     model = sm.logit(formula, data=df).fit()
+#     return model
 
 
-def predictor(test_df, model):
-    prob = model.predict(test_df)
-    return prob
+# def predictor(test_df, model):
+#     prob = model.predict(test_df)
+#     return prob
 
 
 def preprocessor(data):
@@ -94,13 +94,14 @@ def preprocessor(data):
     df_engineered = features_engineering(df_imputed)
 
     df_drop_na =  df_engineered[["fs_year",'target','roa','td_ta','current_ratio','Debt_coverage', 'asst_tot']]\
-                    .replace([float('inf'), -float('inf')], float('nan'))\
-                    .dropna()
+                    .replace([float('inf'), -float('inf')], float('nan'))
+                    # .dropna()
 
     df_standardized = standardize(df_drop_na)
     
     final_columns = ["fs_year",'target','roa','td_ta','current_ratio','Debt_coverage', 'asst_tot_log']
     final_df = df_standardized[final_columns]
+    print(final_df.shape)
    
     return final_df
     

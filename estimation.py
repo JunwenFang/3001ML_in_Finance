@@ -198,8 +198,10 @@ X_train = df_train.drop(columns = ['target', 'fs_year'], axis=1)
 y_train = df_train['target']
 
 variables = list(X_train.columns)
+print(variables)
 my_formula = "target ~ " + " + ".join(variables)
 model = estimator(df_train, my_formula)
+print(model.summary())
 
 # save the model
 with open("final_model.pkl", "wb") as f:
