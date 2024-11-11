@@ -4,7 +4,7 @@ import argparse
 from prediction import preprocessor, predictor_harness
 
 def load_model():
-    with open('model.pkl', 'rb') as file:
+    with open('final_model.pkl', 'rb') as file:
         model = pickle.load(file)
     return model
 
@@ -21,15 +21,9 @@ df = pd.read_csv(input_csv)
 
 model = load_model()
 
-columns = list(df.columns)
+# columns = list(df.columns)
 
-output_csv = predictor_harness(df, model, preprocessor, output_csv, 
-                               preproc_params = {'asst_tot_median': 3458428.5, 
-                                                 'roa_median': 2.39, 
-                                                 'debt_ratio_median': 0.5506120856551856, 
-                                                 'cash_return_assets_median': 0.021743523917807147, 
-                                                 'leverage_median': 0.7460792711253206, 
-                                                 })
+output_csv = predictor_harness(df, model, preprocessor, output_csv )
                                
 print('done')
 
