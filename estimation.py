@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.metrics import roc_auc_score
+from sklearn.preprocessing import StandardScaler
 import statsmodels.formula.api as sm
 import pickle
 
@@ -22,13 +23,14 @@ def null_imputation(df):
     Null values imputation for features engineering
     """
 
-    df['roa'] = df['roa'].fillna(df['profit'] / df['asst_tot'])
-    df['roe'] = df['roe'].fillna(df['profit'] / df['eqty_tot'])
-    df['exp_financing'] = df['exp_financing'].fillna(df['inc_financing'] - df['prof_financing'])
-    df['eqty_tot'] = df['eqty_tot'].fillna(df['asst_tot'] - (df['liab_lt'] + df['debt_bank_st'] + df['debt_bank_lt'] +
-                                            df['debt_fin_st'] + df['debt_fin_lt'] + df['AP_st'] +
-                                            df['AP_lt']))
+    # df['roa'] = df['roa'].fillna(df['profit'] / df['asst_tot'])
+    # df['roe'] = df['roe'].fillna(df['profit'] / df['eqty_tot'])
+    # df['exp_financing'] = df['exp_financing'].fillna(df['inc_financing'] - df['prof_financing'])
+    # df['eqty_tot'] = df['eqty_tot'].fillna(df['asst_tot'] - (df['liab_lt'] + df['debt_bank_st'] + df['debt_bank_lt'] +
+    #                                         df['debt_fin_st'] + df['debt_fin_lt'] + df['AP_st'] +
+    #                                         df['AP_lt']))
     
+    df['roe'] = df['roa'] * df['asst_tot']/df['eqty_tot']
     return df
 
 
@@ -53,6 +55,17 @@ def features_engineering(df):
 
     return df
 
+def standardize(df):
+
+    df['asst_tot_log'] = np.log(df['asst_tot'])
+
+    columns_to_standardize = ['roa','td_ta','current_ratio','Debt_coverage', 'asst_tot_log']
+
+    scaler = StandardScaler()
+
+    df[columns_to_standardize] = scaler.fit_transform(df[columns_to_standardize])
+
+    return df
 
 
 def preprocessor(data):
@@ -65,10 +78,15 @@ def preprocessor(data):
 
     df_engineered = features_engineering(df_imputed)
 
-    final_columns = ["fs_year",'target','roa','td_ta','current_ratio','Debt_coverage', 'asst_tot']
-    final_df = df_engineered[final_columns]
-    final_df = final_df.replace([float('inf'), -float('inf')], float('nan')).dropna()
+    df_drop_na =  df_engineered[["fs_year",'target','roa','td_ta','current_ratio','Debt_coverage', 'asst_tot']]\
+                    .replace([float('inf'), -float('inf')], float('nan'))\
+                    .dropna()
 
+    df_standardized = standardize(df_drop_na)
+    
+    final_columns = ["fs_year",'target','roa','td_ta','current_ratio','Debt_coverage', 'asst_tot_log']
+    final_df = df_standardized[final_columns]
+   
     return final_df
 
 
@@ -158,6 +176,10 @@ df = original_train.copy()
 
 
 predictions, model_list, stats_list = walk_forward_harness(df, preprocessor, estimator, predictor_harness)
+
+print("\n")
+mean_auc = [d["AUC"] for d in stats_list]
+print("Mean AUC:", np.mean(mean_auc))
 
 #overall predictions
 all_actuals = pd.concat([d['Actual'] for d in predictions], ignore_index=True).values
