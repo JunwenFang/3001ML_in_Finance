@@ -8,6 +8,11 @@ def load_model():
         model = pickle.load(file)
     return model
 
+def load_calibration():
+    with open('calibration_model.pkl', 'rb') as file:
+        model = pickle.load(file)
+    return model
+
 print("model loaded successfully")
 
 parser = argparse.ArgumentParser()
@@ -22,7 +27,8 @@ output_csv = args.output_csv
 df = pd.read_csv(input_csv)
 
 model = load_model()
+calibrator = load_calibration()
 
-final_output = predictor_harness(df, model, preprocessor, output_csv )
+final_output = predictor_harness(df, model, calibrator, preprocessor, output_csv )
                                
 print('Prediction done!')

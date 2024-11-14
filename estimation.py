@@ -3,6 +3,7 @@ import numpy as np
 from sklearn.metrics import roc_auc_score
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.cluster import KMeans
+from sklearn.isotonic import IsotonicRegression
 import statsmodels.formula.api as sm
 import pickle
 
@@ -213,3 +214,39 @@ model = estimator(df_train, my_formula)
 # save the model
 with open("final_model.pkl", "wb") as f:
     pickle.dump(model, f)
+
+# Calibration model
+def calibrate_with_isotonic(df, model_output_col, default_label_col, k=20):
+    df = df.sort_values(by=model_output_col, ascending=False).reset_index(drop=True)
+    
+    N = len(df)
+    bucket_size = N // k
+    
+    default_rates = []
+    quantiles = []
+    
+    for i in range(k):
+        bucket = df.iloc[i * bucket_size: (i + 1) * bucket_size]
+        
+        default_rate = bucket[default_label_col].mean()
+        default_rates.append(default_rate)
+
+        quantiles.append(bucket[model_output_col].min())
+    
+    iso_reg = IsotonicRegression(out_of_bounds='clip')
+    iso_reg.fit(quantiles, default_rates)
+    
+
+    with open('calibration_model.pkl', 'wb') as file:
+        pickle.dump(iso_reg, file)
+    
+    calibrated_probs = iso_reg.transform(df[model_output_col].values)
+    print("calibration done!")
+    
+    return calibrated_probs, iso_reg
+
+
+predictions = model.predict(X_train)
+df_calib = pd.DataFrame({"Actual":y_train, "Predicted":predictions})
+
+cali_prob, iso_reg = calibrate_with_isotonic(df_calib,"Predicted","Actual")
