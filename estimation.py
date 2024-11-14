@@ -1,7 +1,9 @@
 import pandas as pd
 import numpy as np
 from sklearn.metrics import roc_auc_score
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.cluster import KMeans
+from sklearn.isotonic import IsotonicRegression
 import statsmodels.formula.api as sm
 import pickle
 
@@ -18,19 +20,27 @@ def target_label(df):
 
     return df
 
-def null_imputation(df):
+def null_imputation(data):
     """
-    Null values imputation for features engineering
+    Impute null values by cluster's median value
     """
 
-    # df['roa'] = df['roa'].fillna(df['profit'] / df['asst_tot'])
-    # df['roe'] = df['roe'].fillna(df['profit'] / df['eqty_tot'])
-    # df['exp_financing'] = df['exp_financing'].fillna(df['inc_financing'] - df['prof_financing'])
-    # df['eqty_tot'] = df['eqty_tot'].fillna(df['asst_tot'] - (df['liab_lt'] + df['debt_bank_st'] + df['debt_bank_lt'] +
-    #                                         df['debt_fin_st'] + df['debt_fin_lt'] + df['AP_st'] +
-    #                                         df['AP_lt']))
-    
-    df['roe'] = df['roa'] * df['asst_tot']/df['eqty_tot']
+    df = data.copy()
+
+    df = df.replace([float('inf'), -float('inf')], float('nan'))
+    df['legal_struct_encoded'] = LabelEncoder().fit_transform(df['legal_struct'])
+    features = df[['asst_tot', 'legal_struct_encoded', 'ateco_sector']].fillna(0)
+
+    scaler = StandardScaler()
+    scaled_features = scaler.fit_transform(features)
+
+    kmeans = KMeans(n_clusters=10, random_state=42) 
+    df['cluster'] = kmeans.fit_predict(scaled_features)
+
+    for column in df.columns:
+        if df[column].isnull().any():
+            df[column] = df.groupby('cluster')[column].transform(lambda x: x.fillna(x.median()))
+
     return df
 
 
@@ -68,19 +78,17 @@ def standardize(df):
     return df
 
 
+
 def preprocessor(data):
 
     df = data.copy()
 
     df_labeled = target_label(df)
 
-    df_imputed = null_imputation(df_labeled)
+    df_engineered = features_engineering(df_labeled)
 
-    df_engineered = features_engineering(df_imputed)
-
-    df_drop_na =  df_engineered[["fs_year",'target','roa','td_ta','current_ratio','Debt_coverage', 'asst_tot']]\
-                    .replace([float('inf'), -float('inf')], float('nan'))\
-                    .dropna()
+    df_drop_na =  null_imputation(df_engineered[["fs_year",'target','roa','td_ta','current_ratio'\
+                                                 ,'Debt_coverage', 'asst_tot',"legal_struct","ateco_sector"]])
 
     df_standardized = standardize(df_drop_na)
     
@@ -171,6 +179,8 @@ def walk_forward_harness(data, preprocessor, estimator, predictor_harness):
 
 
 
+
+
 original_train = pd.read_csv("Data/train.csv").drop("Unnamed: 0",axis=1)
 df = original_train.copy()
 
@@ -198,11 +208,45 @@ X_train = df_train.drop(columns = ['target', 'fs_year'], axis=1)
 y_train = df_train['target']
 
 variables = list(X_train.columns)
-print(variables)
 my_formula = "target ~ " + " + ".join(variables)
 model = estimator(df_train, my_formula)
-print(model.summary())
 
 # save the model
 with open("final_model.pkl", "wb") as f:
     pickle.dump(model, f)
+
+# Calibration model
+def calibrate_with_isotonic(df, model_output_col, default_label_col, k=20):
+    df = df.sort_values(by=model_output_col, ascending=False).reset_index(drop=True)
+    
+    N = len(df)
+    bucket_size = N // k
+    
+    default_rates = []
+    quantiles = []
+    
+    for i in range(k):
+        bucket = df.iloc[i * bucket_size: (i + 1) * bucket_size]
+        
+        default_rate = bucket[default_label_col].mean()
+        default_rates.append(default_rate)
+
+        quantiles.append(bucket[model_output_col].min())
+    
+    iso_reg = IsotonicRegression(out_of_bounds='clip')
+    iso_reg.fit(quantiles, default_rates)
+    
+
+    with open('calibration_model.pkl', 'wb') as file:
+        pickle.dump(iso_reg, file)
+    
+    calibrated_probs = iso_reg.transform(df[model_output_col].values)
+    print("calibration done!")
+    
+    return calibrated_probs, iso_reg
+
+
+predictions = model.predict(X_train)
+df_calib = pd.DataFrame({"Actual":y_train, "Predicted":predictions})
+
+cali_prob, iso_reg = calibrate_with_isotonic(df_calib,"Predicted","Actual")

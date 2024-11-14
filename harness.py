@@ -8,6 +8,13 @@ def load_model():
         model = pickle.load(file)
     return model
 
+def load_calibration():
+    with open('calibration_model.pkl', 'rb') as file:
+        model = pickle.load(file)
+    return model
+
+print("model loaded successfully")
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--input_csv", required=True)
 parser.add_argument("--output_csv", required=True)
@@ -20,9 +27,8 @@ output_csv = args.output_csv
 df = pd.read_csv(input_csv)
 
 model = load_model()
+calibrator = load_calibration()
 
-final_output = predictor_harness(df, model, preprocessor, output_csv )
+final_output = predictor_harness(df, model, calibrator, preprocessor, output_csv )
                                
-print('done')
-
-# python3 harness.py --input_csv  <input file in csv> --output_csv <output csv file path to which the predictions are written> 
+print('Prediction done!')

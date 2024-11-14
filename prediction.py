@@ -1,10 +1,11 @@
 import pandas as pd
-import pandas as pd
 import numpy as np
 from sklearn.metrics import roc_auc_score
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.isotonic import IsotonicRegression
+from sklearn.cluster import KMeans
 import statsmodels.formula.api as sm
-# import estimation
+import pickle
 
 def target_label(df):
 
@@ -13,8 +14,23 @@ def target_label(df):
 
     return df
 
-def null_imputation(df):
-    df['roe'] = df['roa'] * df['asst_tot']/df['eqty_tot']
+def null_imputation(data):
+    df = data.copy()
+
+    df = df.replace([float('inf'), -float('inf')], float('nan'))
+    df['legal_struct_encoded'] = LabelEncoder().fit_transform(df['legal_struct'])
+    features = df[['asst_tot', 'legal_struct_encoded', 'ateco_sector']].fillna(0)
+
+    scaler = StandardScaler()
+    scaled_features = scaler.fit_transform(features)
+
+    kmeans = KMeans(n_clusters=10, random_state=42) 
+    df['cluster'] = kmeans.fit_predict(scaled_features)
+
+    for column in df.columns:
+        if df[column].isnull().any():
+            df[column] = df.groupby('cluster')[column].transform(lambda x: x.fillna(x.median()))
+
     return df
 
 
@@ -57,13 +73,10 @@ def preprocessor(data):
 
     df_labeled = target_label(df)
 
-    df_imputed = null_imputation(df_labeled)
+    df_engineered = features_engineering(df_labeled)
 
-    df_engineered = features_engineering(df_imputed)
-
-    df_drop_na =  df_engineered[["fs_year",'target','roa','td_ta','current_ratio','Debt_coverage', 'asst_tot']]\
-                    .replace([float('inf'), -float('inf')], float('nan'))\
-                    .dropna()
+    df_drop_na =  null_imputation(df_engineered[["fs_year",'target','roa','td_ta','current_ratio'\
+                                                 ,'Debt_coverage', 'asst_tot',"legal_struct","ateco_sector"]])
 
     df_standardized = standardize(df_drop_na)
     
@@ -73,44 +86,16 @@ def preprocessor(data):
     return final_df
 
 
-# def estimator(df, formula):
-#     #f: "target ~ roa + td_ta + current_ratio + Debt_coverage + asst_tot"
-#     model = sm.logit(formula, data=df).fit()
-#     return model
-
-
-# def predictor(test_df, model):
-#     prob = model.predict(test_df)
-#     return prob
-
-
-def preprocessor(data):
-    df = data.copy()
-
-    df_labeled = target_label(df)
-
-    df_imputed = null_imputation(df_labeled)
-
-    df_engineered = features_engineering(df_imputed)
-
-    df_drop_na =  df_engineered[["fs_year",'target','roa','td_ta','current_ratio','Debt_coverage', 'asst_tot']]\
-                    .replace([float('inf'), -float('inf')], float('nan'))
-                    # .dropna()
-
-    df_standardized = standardize(df_drop_na)
     
-    final_columns = ["fs_year",'target','roa','td_ta','current_ratio','Debt_coverage', 'asst_tot_log']
-    final_df = df_standardized[final_columns]
-    print(final_df.shape)
-   
-    return final_df
-    
-def predictor_harness(new_df, model, preprocessor, output_csv):
+def predictor_harness(new_df, model, calibrator, preprocessor, output_csv):
     
     preprocessed_data = preprocessor(new_df)
+
     predictions = model.predict(preprocessed_data)
 
-    predictions_df = pd.DataFrame(predictions)
+    calibrated_probs = calibrator.transform(predictions)
+
+    predictions_df = pd.DataFrame(calibrated_probs)
     predictions_df.to_csv(output_csv, index=False, header=False)
 
     return output_csv
