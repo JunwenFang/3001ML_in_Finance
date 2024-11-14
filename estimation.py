@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 from sklearn.metrics import roc_auc_score
 from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.isotonic import IsotonicRegression
 from sklearn.cluster import KMeans
 import statsmodels.formula.api as sm
 import pickle
@@ -117,39 +116,17 @@ def predictor_harness(new_df, model, preprocessor):
     y_test = df_test['target']
     
     prob = predictor(X_test, model)
-    predictions = pd.DataFrame({'Actual': y_test,
-        'Predicted': prob})
+    predictions = {
+        'Actual': y_test,
+        'Predicted': prob
+    }   
     
     return predictions 
 
-def calibrate_with_isotonic(df, model_output_col, default_label_col, k=20):
-    
-    df = df.sort_values(by=model_output_col, ascending=False).reset_index(drop=True)
-    
-    N = len(df)
-    bucket_size = N // k
-    
-    default_rates = []
-    quantiles = []
-    
-    for i in range(k):
-        bucket = df.iloc[i * bucket_size: (i + 1) * bucket_size]
-        
-        default_rate = bucket[default_label_col].mean()
-        default_rates.append(default_rate)
-        
-        quantiles.append(bucket[model_output_col].min())
-    
-    iso_reg = IsotonicRegression(out_of_bounds='clip')
-    iso_reg.fit(quantiles, default_rates)
-    
-    calibrated_probs = iso_reg.transform(df[model_output_col].values)
-    
-    return calibrated_probs
 
-
-def metrics(prob, y_actual, year):
-
+def metrics(result_dict, year):
+    y_actual = result_dict["Actual"]
+    prob = result_dict["Predicted"]
     roc_auc = roc_auc_score(y_actual, prob)
     
     print(f"Year: {year}  ROC AUC: {roc_auc:.4f}")
@@ -190,13 +167,11 @@ def walk_forward_harness(data, preprocessor, estimator, predictor_harness):
         model_list.append(model)
 
         # predictor
-        result_df = predictor_harness(test_data, model, preprocessor)
-
-        calibrated_probs = calibrate_with_isotonic(result_df, "Predicted", "Actual", k=20)
-        predictions.append(pd.DataFrame({"Predicted":calibrated_probs, "Actual": result_df["Actual"]}))
+        result_dict = predictor_harness(test_data, model, preprocessor)
+        predictions.append(result_dict)
 
         # performance metrics
-        stats = metrics(calibrated_probs, result_df["Actual"], year)
+        stats = metrics(result_dict, year)
         stats_list.append(stats)              
 
     return predictions, model_list, stats_list
@@ -216,9 +191,10 @@ mean_auc = [d["AUC"] for d in stats_list]
 print("Mean AUC:", np.mean(mean_auc))
 
 #overall predictions
-final_df =  pd.concat(predictions, ignore_index=True)
+all_actuals = pd.concat([d['Actual'] for d in predictions], ignore_index=True).values
+all_predictions = pd.concat([d['Predicted'] for d in predictions], ignore_index=True).values
 
-auc_score = roc_auc_score(final_df["Actual"], final_df["Predicted"])
+auc_score = roc_auc_score(all_actuals, all_predictions)
 print("\n")
 print(f"Overall AUC: {auc_score:.4f}")
 
