@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from sklearn.metrics import roc_auc_score
 from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.isotonic import IsotonicRegression
 from sklearn.cluster import KMeans
 import statsmodels.formula.api as sm
 import pickle
@@ -84,11 +85,43 @@ def preprocessor(data):
    
     return final_df
 
+
+# def calibrate_with_isotonic(df, model_output_col, default_label_col, k=20):
+    
+#     df = df.sort_values(by=model_output_col, ascending=False).reset_index(drop=True)
+    
+#     N = len(df)
+#     bucket_size = N // k
+    
+#     default_rates = []
+#     quantiles = []
+    
+#     for i in range(k):
+#         bucket = df.iloc[i * bucket_size: (i + 1) * bucket_size]
+        
+#         default_rate = bucket[default_label_col].mean()
+#         default_rates.append(default_rate)
+        
+#         quantiles.append(bucket[model_output_col].min())
+    
+#     iso_reg = IsotonicRegression(out_of_bounds='clip')
+#     iso_reg.fit(quantiles, default_rates)
+    
+#     calibrated_probs = iso_reg.transform(df[model_output_col].values)
+    
+#     return calibrated_probs
+
     
 def predictor_harness(new_df, model, preprocessor, output_csv):
     
     preprocessed_data = preprocessor(new_df)
+
+    # true_label = preprocessed_data["target"]
     predictions = model.predict(preprocessed_data)
+
+    # calibrated_probs = calibrate_with_isotonic(pd.DataFrame({"Actual":true_label, \
+    #                                                          "Predicted":predictions}),\
+    #                                            "Predicted", "Actual", k=100)
 
     predictions_df = pd.DataFrame(predictions)
     predictions_df.to_csv(output_csv, index=False, header=False)
