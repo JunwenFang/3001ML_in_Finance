@@ -216,11 +216,12 @@ with open("final_model.pkl", "wb") as f:
     pickle.dump(model, f)
 
 # Calibration model
-def calibrate_with_isotonic(df, model_output_col, default_label_col, k=20):
+def calibrate_with_isotonic(df, model_output_col, default_label_col, k=200):
     df = df.sort_values(by=model_output_col, ascending=False).reset_index(drop=True)
     
     N = len(df)
     bucket_size = N // k
+    print(bucket_size)
     
     default_rates = []
     quantiles = []
